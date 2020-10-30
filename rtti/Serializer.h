@@ -20,8 +20,17 @@ namespace rtti {
             auto stream = std::make_unique<SerialStream>();
             rtti::forEachConst(obj, [&stream](auto&& fieldName, auto&& field) {
                 auto fieldValue = field.get();
-                (*stream)[fieldName] = fieldValue;
-                // std::cout << "serial : " << typeid(decltype(obj)).name() << ", field : " << fieldName << ", value : " << fieldValue << std::endl;
+                using FIELD_VALUE_TYPE = std::decay_t<decltype(fieldValue)>;
+                if constexpr (IsRTTIStruct<FIELD_VALUE_TYPE>::Value) {
+                    // 下面的代码是正常的，不过反序列化没有相应的实现，所以先不开启；暂不支持类嵌套！
+                    throw std::exception();
+
+                    auto fieldStream = serial(fieldValue);
+                    (*stream)[fieldName] = *fieldStream;
+                } else {
+                    // std::cout << "serial : " << typeid(decltype(obj)).name() << ", field : " << fieldName << ", value : " << fieldValue << std::endl;
+                    (*stream)[fieldName] = fieldValue;
+                }
             });
             return stream;
         }

@@ -83,21 +83,29 @@ namespace rtti {
      * @tparam T
      */
     template <class T>
-    class IsField {
+    class IsRTTIField {
     public:
         static constexpr bool Value = CanConvert<T, FieldBase>::Value;
     };
 
     /**
-     * 判断 T 是否为Rtti结构体（能否转型为 StructBase）
+     * 判断 T 是否为Rtti结构体（判断是否包含 FieldVisitor ）
      * @tparam T
      */
-     // TODO
-//    template <class T>
-//    class IsStruct {
-//    public:
-//        static constexpr bool Value = CanConvert<T, StructBase>::Value;
-//    };
+    template <class T>
+    class IsRTTIStruct {
+    public:
+        using Small = char;
+        using Big = int;
+
+        template <typename U>
+        static Small check (typename U::template FieldVisitor<T, 0> *);
+
+        template <typename U>
+        static Big check (...);
+
+        static constexpr bool Value = sizeof(check<T>(0)) == sizeof(Small);
+    };
 
     /**
      * 稻草人，无须实现
