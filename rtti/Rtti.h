@@ -5,6 +5,8 @@
 #ifndef RTTI_H
 #define RTTI_H
 
+#include <ostream>
+
 namespace rtti {
 
     /**
@@ -18,8 +20,6 @@ namespace rtti {
 //            return new StructBase();
 //        }
 //    };
-
-    using StructBase = void *;
 
     /**
      * 字段 模版基类
@@ -54,6 +54,12 @@ namespace rtti {
         }
     };
 
+    template<typename UNIT>
+    std::ostream & operator<<(std::ostream &out, const Field<UNIT> &field) {
+        out << field.get();
+        return out;
+    }
+
     /**
      * 判断 T 能否转型为 U
      */
@@ -86,11 +92,12 @@ namespace rtti {
      * 判断 T 是否为Rtti结构体（能否转型为 StructBase）
      * @tparam T
      */
-    template <class T>
-    class IsStruct {
-    public:
-        static constexpr bool Value = CanConvert<T, StructBase>::Value;
-    };
+     // TODO
+//    template <class T>
+//    class IsStruct {
+//    public:
+//        static constexpr bool Value = CanConvert<T, StructBase>::Value;
+//    };
 
     /**
      * 稻草人，无须实现
@@ -132,7 +139,7 @@ namespace rtti {
     }
 
     template<typename T, typename F, size_t... Is>
-    inline constexpr void forEach(const T &obj, F &&f, std::index_sequence<Is...>) {
+    inline constexpr void forEachConst(const T &obj, F &&f, std::index_sequence<Is...>) {
         using TDECAY = std::decay_t<T>;
         (
                 f(
@@ -154,7 +161,7 @@ namespace rtti {
      */
     template<typename T, typename F>
     inline constexpr void forEach(T &obj, F &&f) {
-        forEach(std::move(obj),
+        forEach(obj,
                 std::forward<F>(f),
                 std::make_index_sequence<rtti::FieldCounter<std::decay_t<T>>::Value>{});
     }
@@ -163,8 +170,8 @@ namespace rtti {
      * const forEach
      */
     template<typename T, typename F>
-    inline constexpr void forEach(const T &obj, F &&f) {
-        forEach(std::move(obj),
+    inline constexpr void forEachConst(const T &obj, F &&f) {
+        forEachConst(obj,
                 std::forward<F>(f),
                 std::make_index_sequence<rtti::FieldCounter<std::decay_t<T>>::Value>{});
     }
@@ -172,12 +179,7 @@ namespace rtti {
 
 #define RTTI_STRUCT_START(STRUCT_NAME)                  struct STRUCT_NAME /* : public rtti::StructBase */ { \
                                                             template <typename T, size_t> struct FieldVisitor; \
-                                                            template <typename T, size_t> struct ConstFieldVisitor; \
-                                                            constexpr const char * className() const { return #STRUCT_NAME; } \
-                                                            static constexpr const char * staticClassName() { return #STRUCT_NAME; } \
-                                                            static STRUCT_NAME* create() { return new STRUCT_NAME(); } \
-                                                            STRUCT_NAME* clone() const { return new STRUCT_NAME(*this); } \
-                                                            static void registerCreator() { rtti::Creator::one().registerCreateFunc(#STRUCT_NAME, create); }
+                                                            template <typename T, size_t> struct ConstFieldVisitor;
 
 #define RTTI_FIELD(INDEX, NAME, UNIT, FEATURE)              rtti::Field<UNIT> NAME;                             \
                                                                                                                 \
