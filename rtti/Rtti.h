@@ -5,20 +5,21 @@
 #ifndef RTTI_H
 #define RTTI_H
 
-#include "Creator.h"
-
 namespace rtti {
 
     /**
      * 结构体 基类；基类不能加 virtual，否则会应该虚函数表导致无法通过结构体初始化的方式进行初始化，然后 成员计数器也无法工作；
-     * 不加 virtual 的话，c++ 的多态性似乎就玩不起来；你无法通过 dynamic_cast 将 StructBase 转型成 子类
+     * 不加 virtual 的话，c++ 的多态性似乎就玩不起来；你无法通过 dynamic_cast 将 StructBase 转型成 子类；
+     * 考虑改成 void * 即可
      */
-    struct StructBase {
+//    struct StructBase {
         // 不要加函数，否则结构体初始化有问题
 //        virtual StructBase* clone() const {
 //            return new StructBase();
 //        }
-    };
+//    };
+
+    using StructBase = void *;
 
     /**
      * 字段 模版基类
@@ -104,7 +105,7 @@ namespace rtti {
      */
     template<typename T, typename = void, typename ...Ts>
     struct FieldCounter {
-        constexpr static size_t Value = sizeof...(Ts) - 2; // 本来应该 -1，但是，因为多了基类 StructBase 所以这里 -2
+        constexpr static size_t Value = sizeof...(Ts) - 1; // 本来应该 -1，但是，因为多了基类 StructBase 所以这里 -2
     };
 
     /**
@@ -167,14 +168,9 @@ namespace rtti {
                 std::forward<F>(f),
                 std::make_index_sequence<rtti::FieldCounter<std::decay_t<T>>::Value>{});
     }
-
-    template <typename T>
-    std::unique_ptr<T> create(const char * name) {
-        return std::make_unique<T>((T*)(Creator::one().create(name)));
-    }
 }
 
-#define RTTI_STRUCT_START(STRUCT_NAME)                  struct STRUCT_NAME : public rtti::StructBase { \
+#define RTTI_STRUCT_START(STRUCT_NAME)                  struct STRUCT_NAME /* : public rtti::StructBase */ { \
                                                             template <typename T, size_t> struct FieldVisitor; \
                                                             template <typename T, size_t> struct ConstFieldVisitor; \
                                                             constexpr const char * className() const { return #STRUCT_NAME; } \

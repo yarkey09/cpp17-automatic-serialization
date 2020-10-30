@@ -5,14 +5,15 @@
 #ifndef CREATOR_H
 #define CREATOR_H
 
+#include "Rtti.h"
+
 #include <functional>
 #include <unordered_map>
 
 namespace rtti {
 
-    class StructBase;
-
-    using CreateFunc = std::function<StructBase*()>;
+    using Createe = StructBase;
+    using CreateFunc = std::function<Createe()>;
 
     class Creator {
     private:
@@ -33,12 +34,17 @@ namespace rtti {
             createFuncs[name] = std::move(func);
         }
 
-        StructBase* create(const char * name) const {
+        Createe create(const char * name) const {
             auto funcEntry = createFuncs.find(name);
             if (funcEntry == createFuncs.end()) {
                 return nullptr;
             }
             return funcEntry->second();
+        }
+
+        template <typename T>
+        std::unique_ptr<T> create(const char * name) const {
+            return std::unique_ptr<T>((T*)(create(name)));
         }
     };
 
@@ -49,7 +55,5 @@ namespace rtti {
         }
     };
 }
-
-
 
 #endif //CREATOR_H

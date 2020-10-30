@@ -54,32 +54,39 @@ RTTI_STRUCT_END()
 
 int main(int argc, char** argv) {
 
+    // 1. 通过反射创建实例
     Point::registerCreator();
     Rect::registerCreator();
 
-    auto rectc = new Rect();
+    const char * className = "Rect";
+    auto pRectA = rtti::Creator::one().create(className);
 
-    auto rect = (Rect *) rtti::Creator::one().create("Rect");
-    rect->p1 = Point {
-            .x = 0.1f, .y = 0.2f
-    };
+    // TODO: 运行时输出：Pv  。。。。 无法做反序列化 。。。。 还是得用上多态
+    std::cout << "pRectA type : " << typeid(decltype(pRectA)).name() << std::endl;
 
-    Rect rect2 {
+//    pRectA->p1 = Point {
+//            .x = 0.1f, .y = 0.2f
+//    };
+
+    // 2. 通过初始化结构体的方式创建实例
+    Rect rectB {
         .p2 = Point {
             .y = 2.0f
         },
         .color = 123456
     };
+    rectB.p1.set(Point {.x = 1.0f});
 
-    rect2.p1.set(Point {.x = 1.0f});
+    // 3. 通过new关键词创建实例
+    auto pRectC = new Rect();
 
     std::cout << "-------------- field count = (" << rtti::FieldCounter<Point>::Value << ")" << std::endl;
-    std::cout << "-------------- rect.p1.has() = (" << rect->p1.has() << ")" << std::endl;
-    std::cout << "-------------- rect.p2.has() = (" << rect->p2.has() << ")" << std::endl;
-    std::cout << "-------------- rect.p1.get().x.has() = (" << rect->p1.get().x.has() << ")" << std::endl;
-    std::cout << "-------------- rect.p1.get().y.has() = (" << rect->p1.get().y.has() << ")" << std::endl;
-    std::cout << "-------------- rect.p2.get().x.has() = (" << rect->p2.get().x.has() << ")" << std::endl;
-    std::cout << "-------------- rect.p2.get().y.has() = (" << rect->p2.get().y.has() << ")" << std::endl;
+//    std::cout << "-------------- rect.p1.has() = (" << rect->p1.has() << ")" << std::endl;
+//    std::cout << "-------------- rect.p2.has() = (" << rect->p2.has() << ")" << std::endl;
+//    std::cout << "-------------- rect.p1.get().x.has() = (" << rect->p1.get().x.has() << ")" << std::endl;
+//    std::cout << "-------------- rect.p1.get().y.has() = (" << rect->p1.get().y.has() << ")" << std::endl;
+//    std::cout << "-------------- rect.p2.get().x.has() = (" << rect->p2.get().x.has() << ")" << std::endl;
+//    std::cout << "-------------- rect.p2.get().y.has() = (" << rect->p2.get().y.has() << ")" << std::endl;
 //    dumpObj(rect);
 
     Point point;
