@@ -1,12 +1,14 @@
 # Automatic serialization library For C++17
 
-> This library use c++ 
+<p>
+This library use c++ 
 <a href="http://www.cplusplus.com/doc/oldtutorial/templates/">template</a> 
 and 
 <a href="http://www.cplusplus.com/doc/tutorial/preprocessor/">macro</a>
 to make serialization automatically.
 <br/>
 It's not a json library. It is based on <a href="https://github.com/nlohmann/json">nlohmann/json</a>.
+</p>
 
 ## Getting Started
 
@@ -37,7 +39,7 @@ rtti::Serializer::serial(outputStream, point);
 std::cout << outputStream.dump(4) << std::endl;
 ```
 
-## Authors 关于作者
+## Authors
 * **ZhangYeqi**. <a href="mailto:hello.zhangyeqi@gmail.com">send me an email</a>.
 
 ## License
