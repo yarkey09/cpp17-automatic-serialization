@@ -24,20 +24,26 @@ namespace rtti {
     /**
      * 字段 模版基类
      */
-    struct FieldBase {
-    };
+//    struct FieldBase {
+//    };
+
+    template<typename, bool IS_RTTI_STRUCT>
+    struct Field_TEMPLATE;
 
     /**
-     * 字段 模版
+     * 基础类型字段，bool, int, float, string ...
      */
     template<typename UNIT>
-    struct Field : public FieldBase {
+    struct Field_TEMPLATE<UNIT, false> {
     private:
         UNIT _value;
         bool _has = false;
     public:
-        Field() {} // 必须有默认构造函数，否则 FieldCounter 会计算错误
-        Field(const UNIT &value) : _value(value), _has(true) {}
+        static constexpr bool _RTTI_FIELD = true;
+        using ParameterizedType = UNIT;
+
+        Field_TEMPLATE() {} // 必须有默认构造函数，否则 FieldCounter 会计算错误
+        Field_TEMPLATE(const UNIT &value) : _value(value), _has(true) {}
 
         const UNIT& get() const {
             return _value;
@@ -54,11 +60,48 @@ namespace rtti {
         }
     };
 
-    template<typename UNIT>
-    std::ostream & operator<<(std::ostream &out, const Field<UNIT> &field) {
-        out << field.get();
-        return out;
-    }
+    /**
+     * 非基础类型字段，由 RTTI_STRUCT_START 进行定义的
+     */
+    template <typename UNIT>
+    struct Field_TEMPLATE<UNIT, true> {
+    private:
+        std::shared_ptr<UNIT> _ptrWorking;
+        bool _has = false;
+
+        std::shared_ptr<const UNIT> _ptrStage;
+
+    public:
+        static constexpr bool _RTTI_FIELD = true;
+        static constexpr bool _RTTI_STRUCT_FIELD = true;
+        using ParameterizedType = UNIT;
+
+        Field_TEMPLATE() {}
+        Field_TEMPLATE(const std::shared_ptr<UNIT>& working) : _ptrWorking(working), _has(true) {}
+        Field_TEMPLATE(const std::shared_ptr<UNIT>& working, const std::shared_ptr<const UNIT>& stage) : _ptrWorking(working), _ptrStage(stage), _has(true) {}
+
+        const std::shared_ptr<UNIT>& get() const {
+            return _ptrWorking;
+        }
+        std::shared_ptr<UNIT>& mut_get() {
+            return _ptrWorking;
+        }
+        void set(const std::shared_ptr<UNIT>& working) {
+            _ptrWorking = working;
+            _has = true;
+        }
+        bool has() const {
+            return _has;
+        }
+
+        // stage
+        void setStage(const std::shared_ptr<const UNIT>& stage) {
+            _ptrStage = stage;
+        }
+        std::shared_ptr<const UNIT> getStage() const {
+            return _ptrStage;
+        }
+    };
 
     /**
      * 判断 T 能否转型为 U
@@ -79,13 +122,23 @@ namespace rtti {
     };
 
     /**
-     * 判断 T 是否为字段（能否转型为 FieldBase）
+     * 判断 T 是否为字段（判断是否包含 NORMAL_FIELD 成员 ）
      * @tparam T
      */
-    template <class T>
-    class IsRTTIField {
-    public:
-        static constexpr bool Value = CanConvert<T, FieldBase>::Value;
+    template <typename T>
+    struct IsRTTIField {
+        template <typename U>
+        static auto check (U) -> typename std::decay<decltype(U::_RTTI_FIELD)>::type;
+        static void check(...);
+        static constexpr bool Value = !std::is_void_v<decltype(check(std::declval<T>()))>;
+    };
+
+    template <typename T>
+    struct IsRTTIStructField {
+        template <typename U>
+        static auto check (U) -> typename std::decay<decltype(U::_RTTI_STRUCT_FIELD)>::type;
+        static void check(...);
+        static constexpr bool Value = !std::is_void_v<decltype(check(std::declval<T>()))>;
     };
 
     /**
@@ -106,6 +159,15 @@ namespace rtti {
 
         static constexpr bool Value = sizeof(check<T>(0)) == sizeof(Small);
     };
+
+    template <typename UNIT>
+    using Field = Field_TEMPLATE<UNIT, IsRTTIStruct<UNIT>::Value>;
+
+    template<typename UNIT>
+    std::ostream & operator<<(std::ostream &out, const Field<UNIT> &field) {
+        out << field.get();
+        return out;
+    }
 
     /**
      * 稻草人，无须实现
@@ -138,10 +200,7 @@ namespace rtti {
     inline constexpr void forEach(T &obj, F &&f, std::index_sequence<Is...>) {
         using TDECAY = std::decay_t<T>;
         (
-                f(
-                        typename TDECAY::template FieldVisitor<TDECAY, Is>(obj).name(),
-                        typename TDECAY::template FieldVisitor<TDECAY, Is>(obj).ref()
-                ),
+                f(typename TDECAY::template FieldVisitor<TDECAY, Is>(obj)),
                 ...
         );
     }
@@ -151,8 +210,7 @@ namespace rtti {
         using TDECAY = std::decay_t<T>;
         (
                 f(
-                        typename TDECAY::template ConstFieldVisitor<TDECAY, Is>(obj).name(),
-                        typename TDECAY::template ConstFieldVisitor<TDECAY, Is>(obj).ref()
+                        typename TDECAY::template ConstFieldVisitor<TDECAY, Is>(obj)
                 ),
                 ...
         );
@@ -187,7 +245,8 @@ namespace rtti {
 
 #define RTTI_STRUCT_START(STRUCT_NAME)                  struct STRUCT_NAME /* : public rtti::StructBase */ { \
                                                             template <typename T, size_t> struct FieldVisitor; \
-                                                            template <typename T, size_t> struct ConstFieldVisitor;
+                                                            template <typename T, size_t> struct ConstFieldVisitor; \
+                                                            static constexpr int _RTTI_STRUCT = 2;
 
 #define RTTI_FIELD(INDEX, NAME, UNIT, FEATURE)              rtti::Field<UNIT> NAME;                             \
                                                                                                                 \
@@ -200,6 +259,9 @@ namespace rtti {
                                                                 constexpr const char * name() {                 \
                                                                     return #NAME;                               \
                                                                 }                                               \
+                                                                constexpr const char * feature() const {        \
+                                                                    return #FEATURE;                            \
+                                                                }                                               \
                                                                 rtti::Field<UNIT>& ref() {                      \
                                                                     return obj.NAME;                            \
                                                                 }                                               \
@@ -211,10 +273,13 @@ namespace rtti {
                                                                 const T& obj;                                   \
                                                             public:                                             \
                                                                 explicit ConstFieldVisitor(const T& obj) : obj(obj) {}     \
-                                                                constexpr const char * name() {                 \
+                                                                constexpr const char * name() const {           \
                                                                     return #NAME;                               \
                                                                 }                                               \
-                                                                const rtti::Field<UNIT>& ref() {                \
+                                                                constexpr const char * feature() const {        \
+                                                                    return #FEATURE;                            \
+                                                                }                                               \
+                                                                const rtti::Field<UNIT>& ref() const {          \
                                                                     return obj.NAME;                            \
                                                                 }                                               \
                                                             };
