@@ -37,7 +37,7 @@ namespace rtti {
                 }
 
                 // check if it's RTTI Struct Field
-                if constexpr (IsRTTIStructField<std::decay_t<decltype(fieldRef)>>::Value) {
+                if constexpr (IsSharedField<std::decay_t<decltype(fieldRef)>>::Value) {
                     auto key = serial(objectsStream, *fieldValue); // rtti-struct 's value is shared_ptr
                     stream[fieldName] = key;
                 } else {
@@ -63,8 +63,8 @@ namespace rtti {
 
                 // check if it's RTTI Struct Field
                 using FieldType = std::decay_t<decltype(fieldRef)>;
-                if constexpr (IsRTTIStructField<FieldType>::Value) {
-                    using FieldUnit = typename FieldType::ParameterizedType;
+                if constexpr (IsSharedField<FieldType>::Value) {
+                    using FieldUnit = typename FieldType::UnitType;
                     auto fieldObject = unSerial<FieldUnit>(objectsStream, fieldValue); // fieldValue is key
                     fieldRef.set(std::move(fieldObject));
                 } else {

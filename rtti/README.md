@@ -1,0 +1,1 @@
+Struct doesn't support Inheritance and Polymorphism !

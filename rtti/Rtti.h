@@ -6,44 +6,38 @@
 #define RTTI_H
 
 #include <ostream>
+#include <type_traits>
 
 namespace rtti {
 
-    /**
-     * 结构体 基类；基类不能加 virtual，否则会应该虚函数表导致无法通过结构体初始化的方式进行初始化，然后 成员计数器也无法工作；
-     * 不加 virtual 的话，c++ 的多态性似乎就玩不起来；你无法通过 dynamic_cast 将 StructBase 转型成 子类；
-     * 考虑改成 void * 即可
-     */
-//    struct StructBase {
-        // 不要加函数，否则结构体初始化有问题
-//        virtual StructBase* clone() const {
-//            return new StructBase();
-//        }
-//    };
+    class _ClassBase {
+    public:
+        virtual ~_ClassBase() = default;
+    };
 
-    /**
-     * 字段 模版基类
-     */
-//    struct FieldBase {
-//    };
+    template <typename T>
+    struct IsClass {
+        static constexpr bool Value =  std::is_base_of_v<_ClassBase, T>;
+    };
 
-    template<typename, bool IS_RTTI_STRUCT>
-    struct Field_TEMPLATE;
+    class _FieldBase {
+    public:
+        virtual ~_FieldBase() = default;
+    };
 
-    /**
-     * 基础类型字段，bool, int, float, string ...
-     */
-    template<typename UNIT>
-    struct Field_TEMPLATE<UNIT, false> {
+    template <typename T>
+    struct IsField {
+        static constexpr bool Value = std::is_base_of_v<_FieldBase, T>;
+    };
+
+    template<typename UNIT, bool IS_SHARED_FIELD = false>
+    class _ValueField : public _FieldBase {
     private:
         UNIT _value;
         bool _has = false;
     public:
-        static constexpr bool _RTTI_FIELD = true;
-        using ParameterizedType = UNIT;
-
-        Field_TEMPLATE() {} // 必须有默认构造函数，否则 FieldCounter 会计算错误
-        Field_TEMPLATE(const UNIT &value) : _value(value), _has(true) {}
+        _ValueField() = default;
+        _ValueField(const UNIT &value) : _value(value), _has(true) {}
 
         const UNIT& get() const {
             return _value;
@@ -60,41 +54,40 @@ namespace rtti {
         }
     };
 
-    /**
-     * 非基础类型字段，由 RTTI_STRUCT_START 进行定义的
-     */
-    template <typename UNIT>
-    struct Field_TEMPLATE<UNIT, true> {
-    private:
-        std::shared_ptr<UNIT> _ptrWorking;
-        bool _has = false;
+    // primary field
+    template <typename UNIT, bool IS_SHARED_FIELD>
+    class FieldTemplate : public _ValueField<UNIT, IS_SHARED_FIELD> {
+    public:
+        static constexpr const bool _SHARED_FIELD = false;
+        using UnitType = UNIT;
 
+        FieldTemplate() = default;
+        FieldTemplate(const UNIT &value) : _ValueField<UNIT>(value) {}
+
+        auto& operator=(const UNIT& value) {
+            this->set(value);
+            return *this;
+        }
+    };
+
+    // shared field
+    template <typename UNIT>
+    class FieldTemplate<UNIT, true> : public _ValueField<std::shared_ptr<UNIT>> {
+    private:
         std::shared_ptr<const UNIT> _ptrStage;
 
     public:
-        static constexpr bool _RTTI_FIELD = true;
-        static constexpr bool _RTTI_STRUCT_FIELD = true;
-        using ParameterizedType = UNIT;
+        static constexpr const bool _SHARED_FIELD = true;
+        using UnitType = UNIT;
 
-        Field_TEMPLATE() {}
-        Field_TEMPLATE(const std::shared_ptr<UNIT>& working) : _ptrWorking(working), _has(true) {}
-        Field_TEMPLATE(const std::shared_ptr<UNIT>& working, const std::shared_ptr<const UNIT>& stage) : _ptrWorking(working), _ptrStage(stage), _has(true) {}
+        FieldTemplate() = default;
+        FieldTemplate(const UNIT &value) : _ValueField<std::shared_ptr<UNIT>>(value) {}
 
-        const std::shared_ptr<UNIT>& get() const {
-            return _ptrWorking;
-        }
-        std::shared_ptr<UNIT>& mut_get() {
-            return _ptrWorking;
-        }
-        void set(const std::shared_ptr<UNIT>& working) {
-            _ptrWorking = working;
-            _has = true;
-        }
-        bool has() const {
-            return _has;
+        auto& operator=(const std::shared_ptr<UNIT>& value) {
+            this->set(value);
+            return *this;
         }
 
-        // stage
         void setStage(const std::shared_ptr<const UNIT>& stage) {
             _ptrStage = stage;
         }
@@ -103,65 +96,8 @@ namespace rtti {
         }
     };
 
-    /**
-     * 判断 T 能否转型为 U
-     */
-    template <class T, class U>
-    class CanConvert {
-    private:
-        using Small = char;
-        using Big = int;
-
-        static Small check (U);
-        static Big check (...);
-
-        static T makeT ();
-
-    public:
-        static constexpr bool Value = sizeof(check(makeT())) == sizeof(Small);
-    };
-
-    /**
-     * 判断 T 是否为字段（判断是否包含 NORMAL_FIELD 成员 ）
-     * @tparam T
-     */
-    template <typename T>
-    struct IsRTTIField {
-        template <typename U>
-        static auto check (U) -> typename std::decay<decltype(U::_RTTI_FIELD)>::type;
-        static void check(...);
-        static constexpr bool Value = !std::is_void_v<decltype(check(std::declval<T>()))>;
-    };
-
-    template <typename T>
-    struct IsRTTIStructField {
-        template <typename U>
-        static auto check (U) -> typename std::decay<decltype(U::_RTTI_STRUCT_FIELD)>::type;
-        static void check(...);
-        static constexpr bool Value = !std::is_void_v<decltype(check(std::declval<T>()))>;
-    };
-
-    /**
-     * 判断 T 是否为Rtti结构体（判断是否包含 FieldVisitor ）
-     * @tparam T
-     */
-    template <class T>
-    class IsRTTIStruct {
-    public:
-        using Small = char;
-        using Big = int;
-
-        template <typename U>
-        static Small check (typename U::template FieldVisitor<T, 0> *);
-
-        template <typename U>
-        static Big check (...);
-
-        static constexpr bool Value = sizeof(check<T>(0)) == sizeof(Small);
-    };
-
     template <typename UNIT>
-    using Field = Field_TEMPLATE<UNIT, IsRTTIStruct<UNIT>::Value>;
+    using Field = FieldTemplate<UNIT, IsClass<UNIT>::Value>;
 
     template<typename UNIT>
     std::ostream & operator<<(std::ostream &out, const Field<UNIT> &field) {
@@ -169,28 +105,33 @@ namespace rtti {
         return out;
     }
 
-    /**
-     * 稻草人，无须实现
-     */
-    struct Any {
-        template<typename T>
-        operator T(); // not implemented
+    template<typename UNIT>
+    std::istream & operator>>(std::istream &in, const Field<UNIT> &field) {
+        in >> field.mut_get();
+        return in;
+    }
+
+    template <typename T>
+    struct IsSharedField {
+        template <typename U>
+        static constexpr bool check (decltype(U::_SHARED_FIELD) *) {
+            return U::_SHARED_FIELD;
+        }
+        template <typename U>
+        static constexpr bool check (...) {
+            return false;
+        }
+        static constexpr bool Value = check<T>(0);
     };
 
-    /**
-     * 字段计数器，基础模版
-     */
-    template<typename T, typename = void, typename ...Ts>
+    template <typename T, typename F = void, size_t SIZE = 0>
     struct FieldCounter {
-        constexpr static size_t Value = sizeof...(Ts) - 1; // 本来应该 -1，但是，因为多了基类 StructBase 所以这里 -2
+        constexpr static size_t Value = SIZE;
     };
 
-    /**
-     * 字段计数器，特化模版
-     */
-    template<typename T, typename ...Ts>
-    struct FieldCounter<T, std::void_t<decltype(T{Ts{}...})>, Ts...> {
-        constexpr static size_t Value = FieldCounter<T, void, Ts..., Any>::Value;
+    template <typename T, size_t SIZE>
+    struct FieldCounter<T, std::enable_if_t<T::template _FieldVisitor<T, SIZE>::VALID>, SIZE> {
+        constexpr static size_t Value = FieldCounter<T, void, SIZE+1>::Value;
     };
 
     /**
@@ -200,7 +141,7 @@ namespace rtti {
     inline constexpr void forEach(T &obj, F &&f, std::index_sequence<Is...>) {
         using TDECAY = std::decay_t<T>;
         (
-                f(typename TDECAY::template FieldVisitor<TDECAY, Is>(obj)),
+                f(typename TDECAY::template _FieldVisitor<TDECAY, Is>(obj)),
                 ...
         );
     }
@@ -210,7 +151,7 @@ namespace rtti {
         using TDECAY = std::decay_t<T>;
         (
                 f(
-                        typename TDECAY::template ConstFieldVisitor<TDECAY, Is>(obj)
+                        typename TDECAY::template _ConstFieldVisitor<TDECAY, Is>(obj)
                 ),
                 ...
         );
@@ -243,19 +184,24 @@ namespace rtti {
     }
 }
 
-#define RTTI_STRUCT_START(STRUCT_NAME)                  struct STRUCT_NAME /* : public rtti::StructBase */ { \
-                                                            template <typename T, size_t> struct FieldVisitor; \
-                                                            template <typename T, size_t> struct ConstFieldVisitor; \
-                                                            static constexpr int _RTTI_STRUCT = 2;
+#define RTTI_SUPER_CLASS_START(CLASS_NAME, BASE_CLASS)  struct CLASS_NAME : public BASE_CLASS {                        \
+                                                            template <typename T, size_t> struct _FieldVisitor {       \
+                                                                static constexpr bool VALID = false;                   \
+                                                            };                                                         \
+                                                            template <typename T, size_t> struct _ConstFieldVisitor {  \
+                                                                static constexpr bool VALID = false;                   \
+                                                            };
+
+#define RTTI_CLASS_START(CLASS_NAME) RTTI_SUPER_CLASS_START(CLASS_NAME, rtti::_ClassBase)
 
 #define RTTI_FIELD(INDEX, NAME, UNIT, FEATURE)              rtti::Field<UNIT> NAME;                             \
-                                                                                                                \
                                                             template <typename T>                               \
-                                                            struct FieldVisitor<T, INDEX> {                     \
+                                                            struct _FieldVisitor<T, INDEX> {                    \
                                                             private:                                            \
                                                                 T& obj;                                         \
                                                             public:                                             \
-                                                                explicit FieldVisitor(T& obj) : obj(obj) {}     \
+                                                                static constexpr bool VALID = true;             \
+                                                                explicit _FieldVisitor(T& obj) : obj(obj) {}    \
                                                                 constexpr const char * name() {                 \
                                                                     return #NAME;                               \
                                                                 }                                               \
@@ -268,11 +214,12 @@ namespace rtti {
                                                             };                                                  \
                                                                                                                 \
                                                             template <typename T>                               \
-                                                            struct ConstFieldVisitor<T, INDEX> {                \
+                                                            struct _ConstFieldVisitor<T, INDEX> {               \
                                                             private:                                            \
                                                                 const T& obj;                                   \
                                                             public:                                             \
-                                                                explicit ConstFieldVisitor(const T& obj) : obj(obj) {}     \
+                                                                static constexpr bool VALID = true;             \
+                                                                explicit _ConstFieldVisitor(const T& obj) : obj(obj) {}\
                                                                 constexpr const char * name() const {           \
                                                                     return #NAME;                               \
                                                                 }                                               \
@@ -284,6 +231,7 @@ namespace rtti {
                                                                 }                                               \
                                                             };
 
-#define RTTI_STRUCT_END(...)                            };
+#define RTTI_SUPER_CLASS_END(...)                      };
+#define RTTI_CLASS_END(...)                            };
 
 #endif // RTTI_H
