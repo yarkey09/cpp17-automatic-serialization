@@ -2,14 +2,13 @@
 // Created by zhangyeqi on 2020/10/30.
 //
 
-#ifndef SERIALIZER_H
-#define SERIALIZER_H
+#ifndef CPPRTTI_SERIALIZER_H
+#define CPPRTTI_SERIALIZER_H
+
+// This file/class NOT exported !!
 
 #include "Rtti.h"
-
-// TODO: hide json lib !
-#include "../json/json.hpp"
-
+#include <nlohmann/json.hpp>
 #include <iostream>
 
 namespace rtti {
@@ -18,63 +17,101 @@ namespace rtti {
 
     class Serializer {
     public:
-        /**
-         * @tparam T obj type
-         * @param objectsStream store the obj stream
-         * @param obj serial into objectsStream, key is the address of obj.
-         * @return the address of obj
-         */
+
         template <typename T>
-        static uint64_t serial(SerialStream& objectsStream, const T& obj) {
+        static void serial(SerialStream& objectsStream, const T& obj, uint64_t key) {
             SerialStream stream;
             rtti::forEachConst(obj, [&stream, &objectsStream](auto&& fieldVisitor) {
                 decltype(fieldVisitor.name()) fieldName = fieldVisitor.name();
                 decltype(fieldVisitor.ref()) fieldRef = fieldVisitor.ref();
-                auto& fieldValue = fieldRef.get();
                 bool fieldHas = fieldRef.has();
                 if (!fieldHas) {
                     return;
                 }
 
-                // check if it's RTTI Struct Field
-                if constexpr (IsSharedField<std::decay_t<decltype(fieldRef)>>::Value) {
-                    auto key = serial(objectsStream, *fieldValue); // rtti-struct 's value is shared_ptr
-                    stream[fieldName] = key;
+                const auto& fieldValue = fieldRef.get();
+                using FieldType = std::decay_t<decltype(fieldRef)>;
+
+                if constexpr (FieldType::FIELD_TYPE == FIELD_TYPE_SHARED) {
+                    // class Field. field value is SharedObject. json is working object key (ptr).
+                    auto sharedWorkingObjectRawPtr = fieldValue.get().get();
+                    auto sharedObjectKey = reinterpret_cast<uint64_t>(sharedWorkingObjectRawPtr);
+                    serial(objectsStream, *sharedWorkingObjectRawPtr, sharedObjectKey);
+                    stream[fieldName] = sharedObjectKey;
+
+                } else if constexpr (FieldType::FIELD_TYPE == FIELD_TYPE_PRIMARY_ARRAY) {
+                    // primary array Field. field value is std::vector< primary type >
+                    SerialStream arrayStream;
+                    for (const auto& fieldPrimaryElement : fieldValue) {
+                        arrayStream.push_back(fieldPrimaryElement);
+                    }
+                    stream[fieldName] = arrayStream;
+
+                } else if constexpr (FieldType::FIELD_TYPE == FIELD_TYPE_SHARED_ARRAY) {
+                    // class array Field, field value is std::vector< SharedObject >
+                    SerialStream arrayStream;
+                    for (const auto& fieldSharedElement : fieldValue) {
+                        auto sharedWorkingObjectRawPtr = fieldSharedElement.get().get();
+                        auto sharedObjectKey = reinterpret_cast<uint64_t>(sharedWorkingObjectRawPtr); // working object ptr
+                        arrayStream.push_back(sharedObjectKey);
+                        serial(objectsStream, *sharedWorkingObjectRawPtr, sharedObjectKey);
+                    }
+                    stream[fieldName] = arrayStream;
+
                 } else {
+                    // primary field or others. convert to json directly.
                     stream[fieldName] = fieldValue;
+
                 }
             });
-            auto key = reinterpret_cast<uint64_t>(&obj);
             objectsStream[std::to_string(key)] = stream;
-            return key;
         }
 
         template <typename T>
-        static std::unique_ptr<T> unSerial(const SerialStream& objectsStream, uint64_t key) {
-            auto obj = std::make_unique<T>();
+        static void unSerial(const SerialStream& objectsStream, T& obj, uint64_t key) {
             const SerialStream& stream = objectsStream[std::to_string(key)];
-            rtti::forEach(*obj, [&stream, &objectsStream](auto&& fieldVisitor) {
+            rtti::forEach(obj, [&stream, &objectsStream](auto&& fieldVisitor) {
                 decltype(fieldVisitor.name()) fieldName = fieldVisitor.name();
                 decltype(fieldVisitor.ref()) fieldRef = fieldVisitor.ref();
                 if (stream.find(fieldName) == stream.end()) {
                     return;
                 }
-                auto& fieldValue = stream[fieldName];
-
-                // check if it's RTTI Struct Field
+                const auto& streamValue = stream[fieldName];
                 using FieldType = std::decay_t<decltype(fieldRef)>;
-                if constexpr (IsSharedField<FieldType>::Value) {
-                    using FieldUnit = typename FieldType::UnitType;
-                    auto fieldObject = unSerial<FieldUnit>(objectsStream, fieldValue); // fieldValue is key
-                    fieldRef.set(std::move(fieldObject));
-                } else {
+                using UnitType = typename FieldType::UnitType;
+
+                if constexpr (FieldType::FIELD_TYPE == FIELD_TYPE_SHARED) {
+                    // class Field. stream value is working object key, field value is SharedObject.
+                    auto fieldObject = std::make_unique<UnitType>();
+                    unSerial<UnitType>(objectsStream, *fieldObject, streamValue);
+                    fieldRef.set(SharedObject<UnitType>(std::move(fieldObject)));
+
+                } else if constexpr (FieldType::FIELD_TYPE == FIELD_TYPE_PRIMARY_ARRAY) {
+                    // primary array field. stream value is array<primary>, field value is std::vector< primary type >
+                    std::vector<UnitType> fieldValue;
+                    for (const auto& streamPrimaryElement : streamValue) {
+                        fieldValue.push_back(streamPrimaryElement);
+                    }
                     fieldRef.set(fieldValue);
+
+                } else if constexpr (FieldType::FIELD_TYPE == FIELD_TYPE_SHARED_ARRAY) {
+                    // class array field. stream value is array< working object key >, field value is std::vector< SharedObject >
+                    std::vector<SharedObject<UnitType>> fieldValue;
+                    for (const auto& streamSharedElement : streamValue) {
+                        auto fieldElementObject = std::make_unique<UnitType>();
+                        unSerial<UnitType>(objectsStream, *fieldElementObject, streamSharedElement);
+                        fieldValue.push_back(SharedObject<UnitType>(std::move(fieldElementObject)));
+                    }
+                    fieldRef.set(fieldValue);
+
+                } else {
+                    // primary field or others. convert from json directly.
+                    fieldRef.set(streamValue);
+
                 }
-                // std::cout << "unSerial : " << typeid(decltype(*obj)).name() << ", field : " << fieldName << ", value : " << fieldValue << std::endl;
             });
-            return obj;
         }
     };
 }
 
-#endif //SERIALIZER_H
+#endif //CPPRTTI_SERIALIZER_H

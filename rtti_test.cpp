@@ -3,35 +3,20 @@
 //
 
 #include "rtti_test.h"
-#include "rtti/Rtti.h"
-#include "rtti/Serializer.h"
+
+#include <Point.h>
+#include <SuperPoint.h>
+#include <Rect.h>
 
 #include <iostream>
 #include <vector>
 #include <string>
 
+using namespace rtti_class;
+
 struct NormalStruct {
     int hello;
 };
-
-RTTI_CLASS_START(Point)
-    RTTI_FIELD(0, x, int, "E")
-    RTTI_FIELD(1, y, int, "E")
-RTTI_CLASS_END()
-
-RTTI_SUPER_CLASS_START(SuperPoint, Point)
-    RTTI_FIELD(0, z, int, "E")
-RTTI_SUPER_CLASS_END()
-
-RTTI_CLASS_START(Rect)
-    RTTI_FIELD(0, p1, Point,"E")
-    RTTI_FIELD(1, p2, Point, "E")
-    RTTI_FIELD(2, name, std::string, "E")
-    RTTI_FIELD(3, color, uint32_t, "E")
-    RTTI_FIELD(4, stingVector, std::vector<std::string>,"E")
-RTTI_CLASS_END()
-
-// TODO: test vector of rtti struct
 
 // 判断指定类型是否为 RTTI 类型
 void checkRTTIStruct() {
@@ -45,37 +30,16 @@ void checkRTTIStruct() {
 
 void checkRTTIField() {
     assert(! rtti::IsField<NormalStruct>::Value);
-    assert(! rtti::IsSharedField<NormalStruct>::Value);
-    assert(rtti::IsField<rtti::Field<int>>::Value);
-    assert(! rtti::IsSharedField<rtti::Field<int>>::Value);
-    assert(rtti::IsField<rtti::Field<Point>>::Value);
-    assert(rtti::IsSharedField<rtti::Field<Point>>::Value);
+
+    assert(rtti::Field<int>::FIELD_TYPE == rtti::FIELD_TYPE_PRIMARY);
+    assert(rtti::Field<Point>::FIELD_TYPE == rtti::FIELD_TYPE_SHARED);
+    assert(rtti::ArrayField<int>::FIELD_TYPE == rtti::FIELD_TYPE_PRIMARY_ARRAY);
+    assert(rtti::ArrayField<Point>::FIELD_TYPE == rtti::FIELD_TYPE_SHARED_ARRAY);
     std::cout << ">> checkRTTIField \tPASS !" << std::endl;
 }
 
-bool operator==(const Point& lhs, const Point& rhs) {
-    return lhs.x.has() == rhs.x.has()
-           && lhs.x.get() == rhs.x.get()
-           && lhs.y.has() == rhs.y.has()
-           && lhs.y.get() == rhs.y.get();
-}
-
-// TODO: override operator == by themselves
-bool operator==(const Rect& lhs, const Rect& rhs) {
-    return lhs.p1.has() == rhs.p1.has()
-           && *lhs.p1.get() == *rhs.p1.get()
-           && lhs.p2.has() == rhs.p2.has()
-           && *lhs.p2.get() == *rhs.p2.get()
-           && lhs.name.has() == rhs.name.has()
-           && lhs.name.get() == rhs.name.get()
-           && lhs.color.has() == rhs.color.has()
-           && lhs.color.get() == rhs.color.get()
-           && lhs.stingVector.has() == rhs.stingVector.has()
-           && lhs.stingVector.get() == rhs.stingVector.get();
-}
-
 void checkRTTISerial() {
-    auto pointOnePtr = std::make_shared<SuperPoint>(); // TODO: SuperPoint 无法支持！！！
+    auto pointOnePtr = std::make_shared<SuperPoint>();
     pointOnePtr->x = 100;
     pointOnePtr->y = 101;
     pointOnePtr->z = 102;
@@ -84,17 +48,42 @@ void checkRTTISerial() {
     pointTwoPtr->x = 200;
     pointTwoPtr->y = 201;
 
-    auto rectPtr = std::make_shared<Rect>();
-    rectPtr->p1 = pointOnePtr;
-    rectPtr->p2 = pointTwoPtr;
-    rectPtr->name = "color-rect";
-    rectPtr->color = 123456;
-    rectPtr->stingVector = std::vector<std::string>({"H", "E", "L", "L", "O"});
+    auto pointThreePtr = std::make_shared<Point>();
+    pointThreePtr->x = 300;
+    pointThreePtr->y = 301;
 
-    rtti::SerialStream rectObjectsStream;
-    auto key = rtti::Serializer::serial(rectObjectsStream, *rectPtr);
-    std::cout << "Rect : " << rectObjectsStream.dump(4) << std::endl;
-    auto newRect = rtti::Serializer::unSerial<Rect>(rectObjectsStream, key);
-    assert(*rectPtr == *newRect);
+    auto pointFourPtr = std::make_shared<Point>();
+    pointFourPtr->x = 400;
+    pointFourPtr->y = 401;
+
+    auto pointFivePtr = std::make_shared<Point>();
+    pointFivePtr->x = 500;
+    pointFivePtr->y = 501;
+
+    auto rectPtr = std::make_shared<Rect>();
+    rectPtr->p1 = std::static_pointer_cast<Point>(pointOnePtr);
+    rectPtr->p2 = pointTwoPtr;
+    rectPtr->name = std::string("color-rect");
+    rectPtr->color = 123456;
+    rectPtr->stingVector() = std::vector<std::string>({"H", "E", "L"});
+    rectPtr->stingVector().emplace_back("L");
+    rectPtr->stingVector().emplace_back("O");
+    rectPtr->pointVector().emplace_back(rtti::SharedObject(pointThreePtr));
+    rectPtr->pointVector().emplace_back(rtti::SharedObject(pointFourPtr));
+    rectPtr->pointVector().emplace_back(rtti::SharedObject(pointFivePtr));
+
+    // serial
+    auto basePtr = std::dynamic_pointer_cast<rtti::ClassBase>(rectPtr);
+    std::string data = basePtr->serial();
+
+    // std::cout << "Rect : " << data << std::endl;
+
+    // unSerial
+    auto newRect = std::make_shared<Rect>();
+    newRect->unSerial(data);
+
+    // check if they are the same
+    assert(*newRect == *basePtr);
+
     std::cout << ">> checkRTTISerial \tPASS !" << std::endl;
 }

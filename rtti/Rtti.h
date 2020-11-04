@@ -2,42 +2,73 @@
 // Created by zhangyeqi on 2020/10/27.
 //
 
-#ifndef RTTI_H
-#define RTTI_H
+#ifndef CPPRTTI_RTTI_H
+#define CPPRTTI_RTTI_H
+
+#include "Serializable.h"
+#include "Equals.h"
 
 #include <ostream>
 #include <type_traits>
 
 namespace rtti {
 
-    class _ClassBase {
+    class ClassBase : public Serializable {
     public:
-        virtual ~_ClassBase() = default;
+        virtual bool operator==(const ClassBase& rhs) const {
+            return false;
+        }
     };
 
     template <typename T>
     struct IsClass {
-        static constexpr bool Value =  std::is_base_of_v<_ClassBase, T>;
+        static constexpr bool Value =  std::is_base_of_v<ClassBase, T>;
     };
 
-    class _FieldBase {
+    class FieldBase {
     public:
-        virtual ~_FieldBase() = default;
+        virtual ~FieldBase() = default;
+        virtual bool operator==(const FieldBase& rhs) const {
+            return false;
+        }
+        virtual bool operator!=(const FieldBase& rhs) const {
+            return !(*this == rhs);
+        }
     };
 
     template <typename T>
     struct IsField {
-        static constexpr bool Value = std::is_base_of_v<_FieldBase, T>;
+        static constexpr bool Value = std::is_base_of_v<FieldBase, T>;
     };
 
-    template<typename UNIT, bool IS_SHARED_FIELD = false>
-    class _ValueField : public _FieldBase {
+    constexpr const int FIELD_TYPE_NONE = 0;                // none
+    constexpr const int FIELD_TYPE_PRIMARY = 1;             // primary
+    constexpr const int FIELD_TYPE_SHARED = 2;              // class
+    constexpr const int FIELD_TYPE_PRIMARY_ARRAY = 3;       // primary array
+    constexpr const int FIELD_TYPE_SHARED_ARRAY = 4;        // class array
+
+    template<typename UNIT>
+    class _ValueField : public FieldBase {
     private:
         UNIT _value;
         bool _has = false;
     public:
+
         _ValueField() = default;
         _ValueField(const UNIT &value) : _value(value), _has(true) {}
+
+        bool operator==(const FieldBase& rhs) const override {
+            const _ValueField<UNIT>* v = dynamic_cast<const _ValueField<UNIT> *>(&rhs);
+            if (v == nullptr) {
+                return false;
+            }
+            return _has == v->_has && _value == v->_value;
+        }
+
+        _ValueField<UNIT>& operator=(const UNIT& value) {
+            this->set(value);
+            return *this;
+        }
 
         const UNIT& get() const {
             return _value;
@@ -52,52 +83,117 @@ namespace rtti {
         bool has() const {
             return _has;
         }
+        void setHas(bool has) {
+            _has = has;
+        }
+    };
+
+    template <typename UNIT>
+    class SharedObject {
+    private:
+        std::shared_ptr<UNIT> _working;
+        std::shared_ptr<const UNIT> _stage;
+    public:
+        SharedObject() : _working(std::make_shared<UNIT>()) {}
+
+        SharedObject(const std::shared_ptr<UNIT>& working) : _working(working) {
+        }
+
+        SharedObject(const std::shared_ptr<UNIT>& working, const std::shared_ptr<const UNIT>& stage) : _working(working), _stage(stage) {
+        }
+
+        UNIT& operator=(const std::shared_ptr<UNIT>& working) const {
+            _working = working;
+            return *this;
+        }
+
+        UNIT& operator*() const {
+            return *_working;
+        }
+
+        std::shared_ptr<UNIT>* operator->() const {
+            return _working;
+        }
+
+        void set(const std::shared_ptr<UNIT>& working) {
+            _working = working;
+        }
+
+        const std::shared_ptr<UNIT>& get() const {
+            return _working;
+        }
+
+        void setStage(const std::shared_ptr<const UNIT>& stage) {
+            _stage = stage;
+        }
+        const std::shared_ptr<const UNIT>& getStage() const {
+            return _stage;
+        }
+
+        bool operator==(const SharedObject<UNIT>& rhs) const {
+            return *_working == *rhs._working;
+        }
+    };
+
+    template <typename, int>
+    class FieldTemplate {
     };
 
     // primary field
-    template <typename UNIT, bool IS_SHARED_FIELD>
-    class FieldTemplate : public _ValueField<UNIT, IS_SHARED_FIELD> {
+    template <typename UNIT>
+    class FieldTemplate<UNIT, FIELD_TYPE_PRIMARY> : public _ValueField<UNIT> {
     public:
-        static constexpr const bool _SHARED_FIELD = false;
+        static constexpr const int FIELD_TYPE = FIELD_TYPE_PRIMARY;
         using UnitType = UNIT;
-
         FieldTemplate() = default;
         FieldTemplate(const UNIT &value) : _ValueField<UNIT>(value) {}
-
-        auto& operator=(const UNIT& value) {
-            this->set(value);
-            return *this;
-        }
     };
 
     // shared field
     template <typename UNIT>
-    class FieldTemplate<UNIT, true> : public _ValueField<std::shared_ptr<UNIT>> {
-    private:
-        std::shared_ptr<const UNIT> _ptrStage;
-
+    class FieldTemplate<UNIT, FIELD_TYPE_SHARED> : public _ValueField<SharedObject<UNIT>> {
     public:
-        static constexpr const bool _SHARED_FIELD = true;
+        static constexpr const int FIELD_TYPE = FIELD_TYPE_SHARED;
         using UnitType = UNIT;
-
         FieldTemplate() = default;
-        FieldTemplate(const UNIT &value) : _ValueField<std::shared_ptr<UNIT>>(value) {}
+        FieldTemplate(const std::shared_ptr<UNIT>& working) : _ValueField<SharedObject<UNIT>>(SharedObject(working)) {}
+    };
 
-        auto& operator=(const std::shared_ptr<UNIT>& value) {
-            this->set(value);
-            return *this;
-        }
+    // primary array field
+    template <typename UNIT>
+    class FieldTemplate<UNIT, FIELD_TYPE_PRIMARY_ARRAY> : public _ValueField<std::vector<UNIT>> {
+    public:
+        static constexpr const int FIELD_TYPE = FIELD_TYPE_PRIMARY_ARRAY;
+        using UnitType = UNIT;
+        FieldTemplate() = default;
 
-        void setStage(const std::shared_ptr<const UNIT>& stage) {
-            _ptrStage = stage;
+        // delegate
+        std::vector<UNIT>& operator()() {
+            this->setHas(true);
+            return this->mut_get();
         }
-        std::shared_ptr<const UNIT> getStage() const {
-            return _ptrStage;
+    };
+
+    // class array field
+    template <typename UNIT>
+    class FieldTemplate<UNIT, FIELD_TYPE_SHARED_ARRAY> : public _ValueField<std::vector<SharedObject<UNIT>>> {
+    public:
+        static constexpr const int FIELD_TYPE = FIELD_TYPE_SHARED_ARRAY;
+        using UnitType = UNIT;
+        FieldTemplate() = default;
+
+        // delegate
+        std::vector<SharedObject<UNIT>>& operator()() {
+            this->setHas(true);
+            return this->mut_get();
         }
     };
 
     template <typename UNIT>
-    using Field = FieldTemplate<UNIT, IsClass<UNIT>::Value>;
+    using Field = FieldTemplate<UNIT, IsClass<UNIT>::Value ? FIELD_TYPE_SHARED : FIELD_TYPE_PRIMARY>;
+
+    template <typename UNIT>
+    using ArrayField = FieldTemplate<UNIT, IsClass<UNIT>::Value ? FIELD_TYPE_SHARED_ARRAY : FIELD_TYPE_PRIMARY_ARRAY>;
 
     template<typename UNIT>
     std::ostream & operator<<(std::ostream &out, const Field<UNIT> &field) {
@@ -110,19 +206,6 @@ namespace rtti {
         in >> field.mut_get();
         return in;
     }
-
-    template <typename T>
-    struct IsSharedField {
-        template <typename U>
-        static constexpr bool check (decltype(U::_SHARED_FIELD) *) {
-            return U::_SHARED_FIELD;
-        }
-        template <typename U>
-        static constexpr bool check (...) {
-            return false;
-        }
-        static constexpr bool Value = check<T>(0);
-    };
 
     template <typename T, typename F = void, size_t SIZE = 0>
     struct FieldCounter {
@@ -185,6 +268,7 @@ namespace rtti {
 }
 
 #define RTTI_SUPER_CLASS_START(CLASS_NAME, BASE_CLASS)  struct CLASS_NAME : public BASE_CLASS {                        \
+                                                            RTTI_EQUALS(CLASS_NAME)                                    \
                                                             template <typename T, size_t> struct _FieldVisitor {       \
                                                                 static constexpr bool VALID = false;                   \
                                                             };                                                         \
@@ -192,9 +276,14 @@ namespace rtti {
                                                                 static constexpr bool VALID = false;                   \
                                                             };
 
-#define RTTI_CLASS_START(CLASS_NAME) RTTI_SUPER_CLASS_START(CLASS_NAME, rtti::_ClassBase)
+#define RTTI_CLASS_START(CLASS_NAME)                        RTTI_SUPER_CLASS_START(CLASS_NAME, rtti::ClassBase)
 
-#define RTTI_FIELD(INDEX, NAME, UNIT, FEATURE)              rtti::Field<UNIT> NAME;                             \
+#define RTTI_ARRAY_FIELD(INDEX, NAME, UNIT, FEATURE)        _RTTI_FIELD_INTERNAL(INDEX, NAME, UNIT, FEATURE, ArrayField)
+#define RTTI_FIELD(INDEX, NAME, UNIT, FEATURE)              _RTTI_FIELD_INTERNAL(INDEX, NAME, UNIT, FEATURE, Field)
+
+
+#define _RTTI_FIELD_INTERNAL(INDEX, NAME, UNIT, FEATURE, FIELD_CLASS)                                            \
+                                                            rtti::FIELD_CLASS<UNIT> NAME;                       \
                                                             template <typename T>                               \
                                                             struct _FieldVisitor<T, INDEX> {                    \
                                                             private:                                            \
@@ -208,7 +297,7 @@ namespace rtti {
                                                                 constexpr const char * feature() const {        \
                                                                     return #FEATURE;                            \
                                                                 }                                               \
-                                                                rtti::Field<UNIT>& ref() {                      \
+                                                                rtti::FIELD_CLASS<UNIT>& ref() {                      \
                                                                     return obj.NAME;                            \
                                                                 }                                               \
                                                             };                                                  \
@@ -226,12 +315,13 @@ namespace rtti {
                                                                 constexpr const char * feature() const {        \
                                                                     return #FEATURE;                            \
                                                                 }                                               \
-                                                                const rtti::Field<UNIT>& ref() const {          \
+                                                                const rtti::FIELD_CLASS<UNIT>& ref() const {    \
                                                                     return obj.NAME;                            \
                                                                 }                                               \
                                                             };
 
-#define RTTI_SUPER_CLASS_END(...)                      };
-#define RTTI_CLASS_END(...)                            };
+#define RTTI_SUPER_CLASS_END(...)                      RTTI_SERIALIZABLE_DEC() };
 
-#endif // RTTI_H
+#define RTTI_CLASS_END(...)                            RTTI_SERIALIZABLE_DEC() };
+
+#endif // CPPRTTI_RTTI_H
