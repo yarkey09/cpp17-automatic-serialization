@@ -7,8 +7,6 @@
 
 #include "Point.h"
 #include <Rtti.h>
-#include <Equals.h>
-
 #include <vector>
 #include <string>
 

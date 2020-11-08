@@ -6,8 +6,6 @@
 #define CPPRTTI_POINT_H
 
 #include <Rtti.h>
-#include <Equals.h>
-
 #include <vector>
 
 namespace rtti_class {

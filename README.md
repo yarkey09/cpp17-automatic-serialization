@@ -7,18 +7,19 @@ and
 <a href="http://www.cplusplus.com/doc/tutorial/preprocessor/">macro</a>
 to make serialization automatically.
 <br/>
-It's not a json library. It is based on <a href="https://github.com/nlohmann/json">nlohmann/json</a>.
+This is not a json library. It is based on <a href="https://github.com/nlohmann/json">nlohmann/json</a>.
+<br/>
+This is a header-only library.
 </p>
 
 ## Getting Started
 
 - <b>Include the headers </b><br/>
 ```
-#include "rtti/Rtti.h"
-#include "rtti/Serializer.h"
+#include <Rtti.h>
 ```
 
-- <b>Declare your struct by the provided macro</b><br/>
+- <b>Declare your class by the provided macro</b><br/>
 ```
 RTTI_STRUCT_START(Point)
     RTTI_FIELD(0, x, int, "E")
@@ -28,15 +29,20 @@ RTTI_STRUCT_END()
 
 - <b>Enjoy it</b><br>
 ```
-Point point {
-    .x = 100,
-    .y = 200
-};
+// create object
+Point pointA;
+pointA.x = 100;
+pointA.y = 200;
 
-rtti::SerialStream outputStream;
-rtti::Serializer::serial(outputStream, point);
+// serial
+auto serialData = pointA.serial();
 
-std::cout << outputStream.dump(4) << std::endl;
+// unSerial
+Point pointB;
+pointB.unSerial(serialData);
+
+// check equals
+assert(pointA == pointB);
 ```
 
 ## Authors

@@ -9,8 +9,6 @@
 #include <Serializer.h>
 #include <Serializable.h>
 
-#include <nlohmann/json.hpp>
-
-RTTI_SERIALIZABLE_IMP(rtti_class::Point)
-RTTI_SERIALIZABLE_IMP(rtti_class::SuperPoint)
-RTTI_SERIALIZABLE_IMP(rtti_class::Rect)
+RTTI_SERIALIZABLE_IMP(rtti_class::Point, rtti::ClassBase)
+RTTI_SERIALIZABLE_IMP(rtti_class::SuperPoint, rtti_class::Point)
+RTTI_SERIALIZABLE_IMP(rtti_class::Rect, rtti::ClassBase)

@@ -5,6 +5,8 @@
 #ifndef CPPRTTI_RTTISERIALIZER_H
 #define CPPRTTI_RTTISERIALIZER_H
 
+#include <nlohmann/json_fwd.hpp>
+
 #include <string>
 #include <memory>
 
@@ -13,39 +15,51 @@
 
 namespace rtti {
 
+    using JsonPtr = nlohmann::json *;
+    using ConstJsonPtr = const nlohmann::json *;
+
     class Serializable {
+
+        friend class Serializer;
+
     public:
         virtual ~Serializable() = default;
 
         std::string serial() const;
-        void unSerial(const std::string& serialData);
+        void deserial(const std::string& serialData);
 
-    protected:
-        virtual std::string onSerial() const;
-        virtual void onUnSerial(const std::string& serialData);
+    // protected:
+        /**
+         * serial
+         * @param objectsData json object
+         * @param key the key of json object
+         * @return true if success
+         */
+        virtual bool onSerial(JsonPtr objectsData, uint64_t key) const;
+
+        /**
+         * deserial
+         * @param objectsData json object
+         * @param key the key of json object
+         * @return true if success
+         */
+        virtual bool onDeserial(ConstJsonPtr objectsData, uint64_t key);
     };
 }
 
-#define RTTI_SERIALIZABLE_DEC(...)                                      \
-    protected:                                                          \
-        std::string onSerial() const override;                          \
-        void onUnSerial(const std::string& serialData) override;
+#define RTTI_SERIALIZABLE_DEC(...)                                              \
+    bool onSerial(rtti::JsonPtr objectsData, uint64_t key) const override;      \
+    bool onDeserial(rtti::ConstJsonPtr objectsData, uint64_t key) override;
 
-#define RTTI_SERIALIZABLE_IMP(CLASS_NAME)                               \
-std::string CLASS_NAME::onSerial() const {                              \
-    auto key = reinterpret_cast<uint64_t>(this);                        \
-    nlohmann::json rootStream;                                          \
-    nlohmann::json objectsStream;                                       \
-    rtti::Serializer::serial(objectsStream, *this, key);                \
-    rootStream[RTTI_KEY_OBJECTS] = objectsStream;                       \
-    rootStream[RTTI_KEY_HEAD] = key;                                    \
-    return rootStream.dump(4);                                          \
-}                                                                       \
-void CLASS_NAME::onUnSerial(const std::string& serialData) {            \
-    auto rootStream = nlohmann::json::parse(serialData);                \
-    nlohmann::json& objectsStream = rootStream[RTTI_KEY_OBJECTS];       \
-    uint64_t key = rootStream[RTTI_KEY_HEAD];                           \
-    rtti::Serializer::unSerial(objectsStream, *this, key);              \
+#define RTTI_SERIALIZABLE_IMP(CLASS_NAME, BASE_CLASS)                           \
+bool CLASS_NAME::onSerial(rtti::JsonPtr objectsData, uint64_t key) const {      \
+    BASE_CLASS::onSerial(objectsData, key);                                     \
+    return rtti::Serializer::serial(*objectsData, *this, key);                  \
+}                                                                               \
+bool CLASS_NAME::onDeserial(rtti::ConstJsonPtr objectsData, uint64_t key) {     \
+    BASE_CLASS::onDeserial(objectsData, key);                                   \
+    return rtti::Serializer::unSerial(*objectsData, *this, key);                \
 }
+
 
 #endif //CPPRTTI_RTTISERIALIZER_H

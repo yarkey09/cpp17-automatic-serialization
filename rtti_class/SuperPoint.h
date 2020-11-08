@@ -7,7 +7,6 @@
 
 #include "Point.h"
 #include <Rtti.h>
-#include <Equals.h>
 
 namespace rtti_class {
 

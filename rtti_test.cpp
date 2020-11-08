@@ -76,11 +76,11 @@ void checkRTTISerial() {
     auto basePtr = std::dynamic_pointer_cast<rtti::ClassBase>(rectPtr);
     std::string data = basePtr->serial();
 
-    // std::cout << "Rect : " << data << std::endl;
+    std::cout << "Rect : " << data << std::endl;
 
     // unSerial
     auto newRect = std::make_shared<Rect>();
-    newRect->unSerial(data);
+    newRect->deserial(data);
 
     // check if they are the same
     assert(*newRect == *basePtr);

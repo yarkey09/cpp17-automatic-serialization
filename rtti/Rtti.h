@@ -62,6 +62,9 @@ namespace rtti {
             if (v == nullptr) {
                 return false;
             }
+            if (!_has && !v->_has) {
+                return true;
+            }
             return _has == v->_has && _value == v->_value;
         }
 
@@ -297,7 +300,7 @@ namespace rtti {
                                                                 constexpr const char * feature() const {        \
                                                                     return #FEATURE;                            \
                                                                 }                                               \
-                                                                rtti::FIELD_CLASS<UNIT>& ref() {                      \
+                                                                rtti::FIELD_CLASS<UNIT>& ref() {                \
                                                                     return obj.NAME;                            \
                                                                 }                                               \
                                                             };                                                  \
