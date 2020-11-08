@@ -37,9 +37,9 @@ pointA.y = 200;
 // serial
 auto serialData = pointA.serial();
 
-// unSerial
+// deserial
 Point pointB;
-pointB.unSerial(serialData);
+pointB.deserial(serialData);
 
 // check equals
 assert(pointA == pointB);
